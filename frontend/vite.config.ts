@@ -9,4 +9,7 @@ export default defineConfig({
       '/api': 'http://localhost:8000',
     },
   },
+  preview: {
+    allowedHosts: ['vectorlessfrontend-production.up.railway.app'],
+  },
 })
