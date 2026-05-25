@@ -3,6 +3,7 @@ from fastapi import Depends, Request, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.config import settings
 from app.db.session import get_db
 from app.models.user import User
 from app.auth.clerk import verify_clerk_jwt
@@ -21,10 +22,14 @@ async def get_tenant_context(
     claims = await verify_clerk_jwt(request)
     clerk_id = claims["sub"]
 
-    # Extract role from Clerk private_metadata
+    # Extract role from Clerk private_metadata or ADMIN_CLERK_IDS env var
     private_meta = claims.get("private_metadata", {}) or {}
     public_meta = claims.get("public_metadata", {}) or {}
     clerk_role = private_meta.get("role") or public_meta.get("role")
+
+    admin_ids = {id_.strip() for id_ in settings.ADMIN_CLERK_IDS.split(",") if id_.strip()}
+    if not clerk_role and clerk_id in admin_ids:
+        clerk_role = "admin"
 
     result = await db.execute(select(User).where(User.clerk_id == clerk_id))
     user = result.scalar_one_or_none()

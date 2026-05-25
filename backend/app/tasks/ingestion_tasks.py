@@ -9,9 +9,10 @@ logger = logging.getLogger(__name__)
 
 async def _run_pipeline(document_id: str, tenant_id: str) -> None:
     from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-    from app.db.session import AsyncSessionLocal
+    from app.config import settings
+    from app.db.session import _build_asyncpg_url
     from app.models.document import Document
     from app.services.storage_service import storage_service
     from app.ingestion.extractor import extract_text
@@ -24,7 +25,15 @@ async def _run_pipeline(document_id: str, tenant_id: str) -> None:
 
     doc_uuid = uuid.UUID(document_id)
 
-    async with AsyncSessionLocal() as db:
+    from sqlalchemy.pool import NullPool
+
+    engine = create_async_engine(
+        _build_asyncpg_url(settings.DATABASE_URL),
+        echo=False,
+        poolclass=NullPool,
+    )
+
+    async with async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)() as db:
         try:
             result = await db.execute(
                 select(Document).where(Document.id == doc_uuid, Document.tenant_id == tenant_id)
@@ -117,7 +126,7 @@ async def _run_pipeline(document_id: str, tenant_id: str) -> None:
 
         except Exception:
             await db.rollback()
-            async with AsyncSessionLocal() as recovery_db:
+            async with async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)() as recovery_db:
                 result = await recovery_db.execute(
                     select(Document).where(Document.id == doc_uuid, Document.tenant_id == tenant_id)
                 )
@@ -126,6 +135,8 @@ async def _run_pipeline(document_id: str, tenant_id: str) -> None:
                     doc.status = "failed"
                     await recovery_db.commit()
             raise
+        finally:
+            await engine.dispose()
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)

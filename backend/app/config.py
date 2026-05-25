@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379"
 
+    ADMIN_CLERK_IDS: str = ""
+
     ALLOWED_ORIGINS: str = "http://localhost:5173"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
